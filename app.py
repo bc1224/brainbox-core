@@ -958,6 +958,82 @@ def api_delete_source(name):
     return jsonify({"deleted": name, "vectors_removed": len(ids_to_delete)})
 
 
+@app.route("/api/web-search", methods=["POST"])
+def api_web_search():
+    """Search the web and return results for the user to selectively ingest."""
+    data = request.get_json()
+    query = data.get("query", "").strip()
+    if not query:
+        return jsonify({"error": "No search query provided"}), 400
+
+    try:
+        # Use Gemini to search and return results (grounded with Google Search)
+        gclient = genai.Client(api_key=config.GOOGLE_API_KEY)
+        response = gclient.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=f"Search the web for: {query}\n\nReturn exactly 8 results as a JSON array. Each result must have: title, url, snippet. Return ONLY the JSON array, no other text.",
+            config={
+                "tools": [{"google_search": {}}],
+            },
+        )
+        usage["gemini"]["requests"] += 1
+
+        # Extract URLs from grounding metadata if available
+        results = []
+        text = response.text or ""
+
+        # Try to parse JSON from response
+        start = text.find("[")
+        end = text.rfind("]") + 1
+        if start >= 0 and end > start:
+            try:
+                parsed = json.loads(text[start:end])
+                for item in parsed:
+                    if isinstance(item, dict) and item.get("url"):
+                        results.append({
+                            "title": item.get("title", item["url"]),
+                            "url": item["url"],
+                            "snippet": item.get("snippet", ""),
+                        })
+            except json.JSONDecodeError:
+                pass
+
+        # Also extract from grounding metadata
+        if hasattr(response, 'candidates') and response.candidates:
+            candidate = response.candidates[0]
+            meta = getattr(candidate, 'grounding_metadata', None)
+            if meta:
+                chunks = getattr(meta, 'grounding_chunks', []) or []
+                for chunk in chunks:
+                    web = getattr(chunk, 'web', None)
+                    if web and hasattr(web, 'uri'):
+                        url = web.uri
+                        title = getattr(web, 'title', url)
+                        if not any(r['url'] == url for r in results):
+                            results.append({"title": title, "url": url, "snippet": ""})
+
+        if not results:
+            # Fallback: just extract any URLs from the text
+            urls = re.findall(r'https?://[^\s\)\]"\'<>]+', text)
+            for u in urls[:10]:
+                if not any(r['url'] == u for r in results):
+                    results.append({"title": u.split("/")[2], "url": u, "snippet": ""})
+
+        # Deduplicate by title and filter empty
+        seen_titles = set()
+        unique = []
+        for r in results:
+            t = r.get("title", "").strip()
+            if t and t not in seen_titles and r.get("url"):
+                seen_titles.add(t)
+                unique.append(r)
+
+        return jsonify({"results": unique[:10], "query": query})
+
+    except Exception as e:
+        return jsonify({"error": f"Search failed: {e}"}), 500
+
+
 @app.route("/api/ingest-audio", methods=["POST"])
 def api_ingest_audio():
     """Transcribe audio file using Gemini and ingest the transcript."""
@@ -1474,5 +1550,5 @@ if __name__ == "__main__":
         print("  Edit your .env file and fill in the missing keys, then run again.\n")
         exit(1)
 
-    print(f"\n  BrainBox Core → http://{args.host}:{args.port}\n")
+    print(f"\n  BrainBox Core -> http://{args.host}:{args.port}\n")
     app.run(host=args.host, port=args.port, debug=True)

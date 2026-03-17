@@ -439,6 +439,36 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .add-options label{display:flex;align-items:center;gap:4px;font-size:11px;color:rgba(255,255,255,0.5);cursor:pointer}
 .add-options input{accent-color:#f472b6}
 
+/* Web search results */
+.search-results{display:flex;flex-direction:column;gap:6px;max-height:320px;overflow-y:auto;margin-top:8px}
+.search-result{
+  display:flex;gap:10px;padding:10px 12px;border-radius:10px;border:1px solid rgba(255,255,255,0.04);
+  background:rgba(255,255,255,0.015);transition:all .15s ease;
+}
+.search-result:hover{border-color:rgba(255,255,255,0.08);background:rgba(255,255,255,0.025)}
+.search-result-info{flex:1;min-width:0}
+.search-result-title{font-size:12.5px;font-weight:500;color:rgba(255,255,255,0.75);margin-bottom:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.search-result-url{font-size:10px;color:rgba(52,211,153,0.6);margin-bottom:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.search-result-snippet{font-size:11px;color:rgba(255,255,255,0.4);line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.search-result-actions{display:flex;flex-direction:column;gap:4px;flex-shrink:0;justify-content:center}
+.search-ingest-btn{
+  padding:5px 10px;border-radius:8px;border:none;font-size:10.5px;font-weight:500;cursor:pointer;
+  background:rgba(244,114,182,0.1);color:rgba(244,114,182,0.8);white-space:nowrap;
+}
+.search-ingest-btn:hover{background:rgba(244,114,182,0.18)}
+.search-ingest-btn.done{background:rgba(52,211,153,0.1);color:rgba(52,211,153,0.7);cursor:default}
+.search-bookmark-btn{
+  padding:4px 10px;border-radius:8px;border:none;font-size:10px;cursor:pointer;
+  background:rgba(255,255,255,0.03);color:rgba(255,255,255,0.35);
+}
+.search-bookmark-btn:hover{color:rgba(96,165,250,0.7)}
+.search-loading{text-align:center;padding:20px;font-size:12px;color:rgba(255,255,255,0.35)}
+.search-ingest-all{
+  margin-top:8px;padding:8px;border-radius:10px;border:1px dashed rgba(244,114,182,0.15);
+  background:none;color:rgba(244,114,182,0.6);font-size:12px;font-weight:500;cursor:pointer;width:100%;
+}
+.search-ingest-all:hover{background:rgba(244,114,182,0.04);border-color:rgba(244,114,182,0.3)}
+
 /* Progress bar */
 .progress-bar{
   height:2px;background:rgba(244,114,182,0.3);border-radius:2px;margin-top:8px;
@@ -912,6 +942,10 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
         Files
       </button>
+      <button class="add-tab" data-tab="search" onclick="switchAddTab('search')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        Search Web
+      </button>
       <button class="add-tab" data-tab="url" onclick="switchAddTab('url')">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
         URL
@@ -938,6 +972,15 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
           <label><input type="checkbox" id="force-ingest"> Force (skip duplicate check)</label>
         </div>
         <div style="margin-top:8px"><div class="progress-bar" id="upload-progress" style="display:none"></div></div>
+      </div>
+      <!-- Search tab -->
+      <div id="add-tab-search" style="display:none">
+        <div style="display:flex;gap:8px">
+          <input class="add-input" type="text" id="web-search-input" placeholder="Search for sources... e.g. apartments in Studio City" style="flex:1" onkeydown="if(event.key==='Enter')webSearch()">
+          <button class="add-pink-btn" onclick="webSearch()" style="width:auto;padding:10px 16px;flex-shrink:0">Search</button>
+        </div>
+        <p class="add-hint" style="margin-top:4px">Find web pages to add as sources. Click "Ingest" on any result to import it.</p>
+        <div id="web-search-results"></div>
       </div>
       <!-- URL tab -->
       <div id="add-tab-url" style="display:none">
@@ -1249,7 +1292,7 @@ function openAddSource(){document.getElementById('add-overlay').classList.remove
 function closeAddSource(){document.getElementById('add-overlay').classList.add('hidden')}
 function switchAddTab(tab){
   document.querySelectorAll('.add-tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===tab));
-  ['files','url','folder','audio'].forEach(t=>{const el=document.getElementById('add-tab-'+t);if(el)el.style.display=t===tab?'block':'none'});
+  ['files','search','url','folder','audio'].forEach(t=>{const el=document.getElementById('add-tab-'+t);if(el)el.style.display=t===tab?'block':'none'});
 }
 
 // File drag & drop
@@ -1290,6 +1333,80 @@ async function uploadFiles(){
 
   document.getElementById('upload-progress').style.display='none';
   selectedFiles=[];fileInput.value='';showSelectedFiles();busy=false;
+}
+
+/* === WEB SEARCH === */
+let searchResults=[];
+
+async function webSearch(){
+  const input=document.getElementById('web-search-input');
+  const q=input.value.trim();
+  if(!q)return;
+  const container=document.getElementById('web-search-results');
+  container.innerHTML='<div class="search-loading">Searching the web...</div>';
+
+  try{
+    const res=await fetch('/api/web-search',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:q})});
+    const data=await res.json();
+    if(data.error){container.innerHTML=`<div class="search-loading" style="color:rgba(248,81,73,0.6)">${esc(data.error)}</div>`;return}
+    searchResults=data.results||[];
+    if(!searchResults.length){container.innerHTML='<div class="search-loading">No results found. Try different keywords.</div>';return}
+    renderSearchResults();
+  }catch(e){container.innerHTML=`<div class="search-loading" style="color:rgba(248,81,73,0.6)">Search failed: ${esc(e.message)}</div>`}
+}
+
+function renderSearchResults(){
+  const container=document.getElementById('web-search-results');
+  let html='<div class="search-results">';
+  searchResults.forEach((r,i)=>{
+    html+=`<div class="search-result" id="search-result-${i}">
+      <div class="search-result-info">
+        <div class="search-result-title">${esc(r.title)}</div>
+        <div class="search-result-url">${esc(r.url)}</div>
+        <div class="search-result-snippet">${esc(r.snippet)}</div>
+      </div>
+      <div class="search-result-actions">
+        <button class="search-ingest-btn" id="search-btn-${i}" onclick="ingestSearchResult(${i})">Ingest</button>
+        <button class="search-bookmark-btn" onclick="bookmarkSearchResult(${i})">Bookmark</button>
+      </div>
+    </div>`;
+  });
+  html+='</div>';
+  html+=`<button class="search-ingest-all" onclick="ingestAllSearchResults()">Ingest all ${searchResults.length} results</button>`;
+  container.innerHTML=html;
+}
+
+async function ingestSearchResult(idx){
+  const r=searchResults[idx];
+  const btn=document.getElementById('search-btn-'+idx);
+  if(btn.classList.contains('done'))return;
+  btn.textContent='Ingesting...';btn.disabled=true;
+
+  try{
+    const isCloud=r.url.includes('notion.so')||r.url.includes('docs.google.com');
+    const endpoint=isCloud?'/api/ingest-cloud':'/api/ingest-url';
+    const res=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:r.url,namespace:ns(),summarize:autoSummarize})});
+    const data=await res.json();
+    if(data.error){toast(`Failed: ${data.error}`,'error');btn.textContent='Retry';btn.disabled=false}
+    else{btn.textContent='Added';btn.classList.add('done');toast(`Ingested "${data.source}"`);refreshSidebar();refreshUsage()}
+  }catch(e){toast('Ingest failed: '+e.message,'error');btn.textContent='Retry';btn.disabled=false}
+}
+
+function bookmarkSearchResult(idx){
+  const r=searchResults[idx];
+  if(readingList.find(x=>x.url===r.url)){toast('Already bookmarked','info');return}
+  readingList.push({url:r.url,added:new Date().toISOString()});
+  localStorage.setItem('bb_readingList',JSON.stringify(readingList));
+  renderReadingList();
+  toast('Bookmarked: '+r.title.slice(0,40));
+}
+
+async function ingestAllSearchResults(){
+  for(let i=0;i<searchResults.length;i++){
+    const btn=document.getElementById('search-btn-'+i);
+    if(btn&&!btn.classList.contains('done'))await ingestSearchResult(i);
+  }
+  toast('All results ingested');
 }
 
 /* === AUDIO INGEST === */
