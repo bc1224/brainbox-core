@@ -1034,6 +1034,58 @@ def api_web_search():
         return jsonify({"error": f"Search failed: {e}"}), 500
 
 
+@app.route("/api/ingest-text", methods=["POST"])
+def api_ingest_text():
+    """Ingest a raw text block as a source."""
+    data = request.get_json()
+    text = data.get("text", "").strip()
+    title = data.get("title", "").strip()
+    namespace = data.get("namespace", "default")
+    summarize = data.get("summarize", True)
+
+    if not text or len(text) < 20:
+        return jsonify({"error": "Text is too short (minimum 20 characters)"}), 400
+
+    config.validate()
+
+    source_name = title if title else f"note_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+
+    chunks_text = chunker.chunk_text(text, config.CHUNK_SIZE, config.CHUNK_OVERLAP)
+    if not chunks_text:
+        return jsonify({"error": "Could not split text into passages"}), 400
+
+    embeddings = []
+    for i in range(0, len(chunks_text), 20):
+        batch = chunks_text[i:i+20]
+        embeddings.extend(embedder.embed_texts(batch, task_type="RETRIEVAL_DOCUMENT"))
+        usage["gemini"]["texts_embedded"] += len(batch)
+        usage["gemini"]["requests"] += 1
+
+    vectors = []
+    ts = datetime.now().isoformat()
+    base_id = hashlib.md5(source_name.encode()).hexdigest()[:12]
+    for i, (emb, chunk) in enumerate(zip(embeddings, chunks_text)):
+        vectors.append({
+            "id": f"{base_id}_{i}",
+            "values": emb,
+            "metadata": {"source": source_name, "source_path": "pasted text",
+                         "file_type": "txt", "chunk_index": i, "total_chunks": len(chunks_text),
+                         "ingested_at": ts, "text": chunk[:1000]},
+        })
+
+    for i in range(0, len(vectors), 100):
+        vectorstore.upsert_vectors(vectors[i:i+100], namespace=namespace)
+        usage["pinecone"]["upserts"] += 1
+
+    summary = ""
+    if summarize:
+        summary = summaries.generate_summary(text[:4000], source_name)
+        usage["claude"]["requests"] += 1
+    summaries.save_summary(source_name, summary, "txt", len(chunks_text), namespace=namespace)
+
+    return jsonify({"source": source_name, "chunks": len(chunks_text), "summary": summary[:200] if summary else ""})
+
+
 @app.route("/api/ingest-audio", methods=["POST"])
 def api_ingest_audio():
     """Transcribe audio file using Gemini and ingest the transcript."""

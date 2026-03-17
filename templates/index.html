@@ -1014,6 +1014,10 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
       <button class="icon-btn" onclick="closeAddSource()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
     </div>
     <div class="add-tabs">
+      <button class="add-tab" data-tab="paste" onclick="switchAddTab('paste')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg>
+        Paste
+      </button>
       <button class="add-tab active" data-tab="files" onclick="switchAddTab('files')">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
         Files
@@ -1036,6 +1040,14 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
       </button>
     </div>
     <div class="add-body">
+      <!-- Paste tab -->
+      <div id="add-tab-paste" style="display:none">
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <input class="add-input" type="text" id="paste-title" placeholder="Title (optional) — e.g. Meeting Notes March 17">
+          <textarea class="add-input" id="paste-text" rows="8" placeholder="Paste your text here... meeting notes, research, emails, anything." style="resize:vertical;min-height:120px;font-size:12.5px;line-height:1.5"></textarea>
+          <button class="add-pink-btn" onclick="ingestPastedText()">Add to knowledge base</button>
+        </div>
+      </div>
       <!-- Files tab -->
       <div id="add-tab-files">
         <div class="drop-zone" id="drop-zone" onclick="document.getElementById('file-input').click()">
@@ -1386,7 +1398,7 @@ function openAddSource(){document.getElementById('add-overlay').classList.remove
 function closeAddSource(){document.getElementById('add-overlay').classList.add('hidden')}
 function switchAddTab(tab){
   document.querySelectorAll('.add-tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===tab));
-  ['files','search','url','folder','audio'].forEach(t=>{const el=document.getElementById('add-tab-'+t);if(el)el.style.display=t===tab?'block':'none'});
+  ['paste','files','search','url','folder','audio'].forEach(t=>{const el=document.getElementById('add-tab-'+t);if(el)el.style.display=t===tab?'block':'none'});
 }
 
 // File drag & drop
@@ -1427,6 +1439,29 @@ async function uploadFiles(){
 
   document.getElementById('upload-progress').style.display='none';
   selectedFiles=[];fileInput.value='';showSelectedFiles();busy=false;
+}
+
+/* === PASTE TEXT INGEST === */
+async function ingestPastedText(){
+  const text=document.getElementById('paste-text').value.trim();
+  const title=document.getElementById('paste-title').value.trim();
+  if(!text){toast('Paste some text first','error');return}
+  if(text.length<20){toast('Text is too short — need at least 20 characters','error');return}
+  if(busy)return;
+  busy=true;toast('Ingesting text...','info');
+
+  try{
+    const res=await fetch('/api/ingest-text',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text,title,namespace:ns(),summarize:autoSummarize})});
+    const data=await res.json();
+    if(data.error)toast(data.error,'error');
+    else{
+      toast(`Added "${data.source}" (${data.chunks} passages)`);
+      document.getElementById('paste-text').value='';
+      document.getElementById('paste-title').value='';
+      refreshSidebar();refreshUsage();
+    }
+  }catch(e){toast('Failed: '+e.message,'error')}
+  busy=false;
 }
 
 /* === WEB SEARCH === */
