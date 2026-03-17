@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>BrainBox Core</title>
+<title>BrainBox</title>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
@@ -714,7 +714,6 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
     <div class="sidebar-brand">
       <svg width="24" height="24" viewBox="0 0 64 64" fill="none"><defs><linearGradient id="brC" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse"><stop stop-color="#f472b6"/><stop offset="1" stop-color="#e879f9"/></linearGradient></defs><path d="M32 8 C22 8, 14 14, 12 22 C8 24, 5 30, 6 36 C6 42, 10 48, 16 50 C18 54, 24 57, 32 57 C40 57, 46 54, 48 50 C54 48, 58 42, 58 36 C59 30, 56 24, 52 22 C50 14, 42 8, 32 8Z" stroke="url(#brC)" stroke-width="2.2" stroke-linejoin="round"/><circle cx="20" cy="24" r="2.2" fill="#f472b6" opacity="0.7"/><circle cx="15" cy="36" r="2.2" fill="#f472b6" opacity="0.75"/><circle cx="22" cy="46" r="2.2" fill="#f472b6" opacity="0.65"/><circle cx="44" cy="24" r="2.2" fill="#e879f9" opacity="0.7"/><circle cx="49" cy="36" r="2.2" fill="#e879f9" opacity="0.75"/><circle cx="42" cy="46" r="2.2" fill="#e879f9" opacity="0.65"/><line x1="20" y1="24" x2="32" y2="22" stroke="#f472b6" stroke-width="1.1" opacity="0.65"/><line x1="15" y1="36" x2="32" y2="34" stroke="#f472b6" stroke-width="1.1" opacity="0.75"/><line x1="44" y1="24" x2="32" y2="22" stroke="#e879f9" stroke-width="1.1" opacity="0.65"/><line x1="49" y1="36" x2="32" y2="34" stroke="#e879f9" stroke-width="1.1" opacity="0.75"/><circle cx="32" cy="22" r="1.5" fill="#d946ef" opacity="0.7"/><circle cx="32" cy="34" r="1.5" fill="#d946ef" opacity="0.65"/></svg>
       <span class="brand-name">BrainBox</span>
-      <span class="brand-sub">Core</span>
     </div>
     <div class="sidebar-actions-top">
       <button class="icon-btn" onclick="openTutorial()" title="How it works">
@@ -1853,7 +1852,7 @@ function exportChat(format){
     const blob=new Blob([JSON.stringify({namespace:ns(),exported:new Date().toISOString(),messages:chatHistory},null,2)],{type:'application/json'});
     const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`brainbox-${ns()}-${date}.json`;a.click();URL.revokeObjectURL(a.href);
   }else{
-    let md=`# BrainBox Core Chat Export\n**Knowledge Base:** ${ns()}\n**Exported:** ${new Date().toLocaleString()}\n**Messages:** ${chatHistory.length}\n\n---\n\n`;
+    let md=`# BrainBox Chat Export\n**Knowledge Base:** ${ns()}\n**Exported:** ${new Date().toLocaleString()}\n**Messages:** ${chatHistory.length}\n\n---\n\n`;
     for(const msg of chatHistory){
       md+=`### ${msg.role.toUpperCase()}`+(msg.timestamp?`  (${msg.timestamp})`:'')+'\n\n';
       md+=msg.content+'\n\n';

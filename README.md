@@ -1,4 +1,4 @@
-# BrainBox Core
+# BrainBox
 
 A personal AI knowledge base that lets you upload documents, ask questions, and get cited answers. Think NotebookLM meets ChatGPT Projects — but open source, multi-model, and you own your data.
 
@@ -33,8 +33,8 @@ You need three free/cheap API keys:
 
 ```bash
 # Clone the repo
-git clone https://github.com/YOUR_USERNAME/brainbox-core.git
-cd brainbox-core
+git clone https://github.com/YOUR_USERNAME/brainbox.git
+cd brainbox
 
 # Install dependencies
 pip install -r requirements.txt

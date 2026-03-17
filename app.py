@@ -1,5 +1,5 @@
 """
-app.py — Web UI for BrainBox Core.
+app.py — Web UI for BrainBox.
 
 Usage:
     python app.py              # Start on http://localhost:5000
@@ -717,7 +717,7 @@ def api_ingest():
 def _reingest_url(url, namespace, summarize=True):
     """Core URL ingest logic. Returns dict or None."""
     resp = http_requests.get(url, timeout=15, verify=False, headers={
-        "User-Agent": "Mozilla/5.0 (BrainBox Core ingestion)"
+        "User-Agent": "Mozilla/5.0 (BrainBox ingestion)"
     })
     resp.raise_for_status()
 
@@ -841,7 +841,7 @@ def api_ingest_cloud():
 
     try:
         resp = http_requests.get(fetch_url, timeout=20, verify=False, headers={
-            "User-Agent": "Mozilla/5.0 (BrainBox Core ingestion)"
+            "User-Agent": "Mozilla/5.0 (BrainBox ingestion)"
         }, allow_redirects=True)
         resp.raise_for_status()
     except Exception as e:
@@ -1518,7 +1518,7 @@ def api_usage_reset():
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="BrainBox Core Web UI")
+    parser = argparse.ArgumentParser(description="BrainBox Web UI")
     parser.add_argument("--port", "-p", type=int, default=5000)
     parser.add_argument("--host", default="127.0.0.1")
     args = parser.parse_args()
@@ -1526,7 +1526,7 @@ if __name__ == "__main__":
     # First-run setup check
     env_path = os.path.join(os.path.dirname(__file__), ".env")
     if not os.path.exists(env_path):
-        print("\n  Welcome to BrainBox Core!")
+        print("\n  Welcome to BrainBox!")
         print("  ─────────────────────────")
         print("  No .env file found. Let's set up your API keys.\n")
         print("  You need 3 API keys (all have free tiers except Anthropic):\n")
@@ -1550,5 +1550,5 @@ if __name__ == "__main__":
         print("  Edit your .env file and fill in the missing keys, then run again.\n")
         exit(1)
 
-    print(f"\n  BrainBox Core -> http://{args.host}:{args.port}\n")
+    print(f"\n  BrainBox -> http://{args.host}:{args.port}\n")
     app.run(host=args.host, port=args.port, debug=True)
