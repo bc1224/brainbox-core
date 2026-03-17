@@ -1,0 +1,35 @@
+# Environment & secrets
+.env
+.env.local
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+env/
+
+# BrainBox data (user-specific)
+.summaries/
+data/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Claude Code
+.claude/
+
+# User documents (example/test files)
+Docs/
+test_doc.txt
