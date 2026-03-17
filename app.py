@@ -597,7 +597,7 @@ def api_knowledge_graph():
     for fname, info in all_sums.items():
         nodes.append({
             "id": fname,
-            "label": fname[:25] + ("..." if len(fname) > 25 else ""),
+            "label": fname.rsplit(".", 1)[0][:18] + ("..." if len(fname) > 20 else ""),
             "type": info.get("file_type", "?"),
             "chunks": info.get("chunk_count", 0),
             "summary": info.get("summary", "")[:100],
