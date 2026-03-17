@@ -1,0 +1,12 @@
+version: "3.8"
+
+services:
+  brainbox:
+    build: .
+    ports:
+      - "5000:5000"
+    env_file:
+      - .env
+    volumes:
+      - ./.summaries:/app/.summaries
+    restart: unless-stopped

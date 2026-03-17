@@ -137,20 +137,11 @@ def _ingest_exchange(question: str, answer: str, namespace: str):
         usage["gemini"]["texts_embedded"] += 1
         usage["gemini"]["requests"] += 1
 
-        vectorstore.upsert_vectors([{
-            "id": f"chat-{vec_id}",
-            "values": emb,
-            "metadata": {
-                "source": "chat-history",
-                "source_path": "conversation",
-                "file_type": "chat",
-                "chunk_index": 0,
-                "total_chunks": 1,
-                "ingested_at": ts,
-                "text": text[:1000],
-            },
-        }], namespace=namespace)
-        usage["pinecone"]["upserts"] += 1
+        vec = [{"id": f"chat-{vec_id}", "values": emb, "metadata": {
+            "source": "chat-history", "source_path": "conversation", "file_type": "chat",
+            "chunk_index": 0, "total_chunks": 1, "ingested_at": ts, "text": text[:1000],
+        }}]
+        _upsert_and_index(vec, namespace)
     except Exception:
         pass
 
@@ -197,8 +188,71 @@ def index():
     return render_template("index.html")
 
 
-def _search_vectors(question, namespace, top_k, source_filter, min_score=0.0, query_embedding=None):
-    """Shared search logic. Returns (results, source_list, context, chunk_details)."""
+# ---------------------------------------------------------------------------
+# Keyword index for hybrid search (BM25-style)
+# ---------------------------------------------------------------------------
+import math
+
+_keyword_index: dict[str, dict[str, list]] = {}  # namespace -> {chunk_id: [text, metadata]}
+
+def _build_keyword_index(namespace: str):
+    """Build/rebuild keyword index from Pinecone metadata for a namespace."""
+    idx = vectorstore.get_index()
+    # We store chunks locally during ingest — pull from summaries as fallback
+    # The index is populated during ingest via _index_chunk()
+    if namespace not in _keyword_index:
+        _keyword_index[namespace] = {}
+
+def _index_chunk(namespace: str, chunk_id: str, text: str, metadata: dict):
+    """Add a chunk to the keyword index."""
+    if namespace not in _keyword_index:
+        _keyword_index[namespace] = {}
+    _keyword_index[namespace][chunk_id] = [text.lower(), metadata]
+
+def _upsert_and_index(vectors: list, namespace: str):
+    """Upsert to Pinecone AND add to keyword index."""
+    _upsert_and_index(vectors, namespace)
+    for v in vectors:
+        text = v.get("metadata", {}).get("text", "")
+        if text:
+            _index_chunk(namespace, v["id"], text, v["metadata"])
+
+def _keyword_search(question: str, namespace: str, top_k: int, source_filter: list = None) -> list:
+    """Simple keyword/BM25-style search over indexed chunks."""
+    if namespace not in _keyword_index or not _keyword_index[namespace]:
+        return []
+
+    query_terms = set(re.findall(r'\w+', question.lower()))
+    if not query_terms:
+        return []
+
+    scores = []
+    corpus_size = len(_keyword_index[namespace])
+
+    for chunk_id, (text, meta) in _keyword_index[namespace].items():
+        if source_filter and meta.get("source") not in source_filter:
+            continue
+
+        # Term frequency scoring with IDF approximation
+        score = 0
+        words = text.split()
+        if not words:
+            continue
+        for term in query_terms:
+            tf = text.count(term) / len(words)
+            # Boost exact phrase matches
+            if term in text:
+                score += tf + 0.1
+        if score > 0:
+            scores.append({"id": chunk_id, "score": score, "metadata": meta})
+
+    scores.sort(key=lambda x: x["score"], reverse=True)
+    return scores[:top_k]
+
+
+def _hybrid_search(question, namespace, top_k, source_filter, min_score=0.0, query_embedding=None):
+    """Reciprocal Rank Fusion of vector + keyword search."""
+    # Vector search
     if query_embedding is None:
         query_embedding = embedder.embed_query(question)
         usage["gemini"]["texts_embedded"] += 1
@@ -208,16 +262,74 @@ def _search_vectors(question, namespace, top_k, source_filter, min_score=0.0, qu
     filter_dict = {"source": {"$in": source_filter}} if source_filter else None
     raw = idx.query(
         vector=query_embedding,
-        top_k=top_k,
+        top_k=top_k * 2,  # fetch more for merging
         include_metadata=True,
         namespace=namespace,
         filter=filter_dict,
     )
     usage["pinecone"]["queries"] += 1
-    results = [{"id": m.id, "score": m.score, "metadata": m.metadata} for m in raw.matches]
+    vector_results = [{"id": m.id, "score": m.score, "metadata": m.metadata} for m in raw.matches]
+
+    # Keyword search
+    keyword_results = _keyword_search(question, namespace, top_k * 2, source_filter)
+
+    # Reciprocal Rank Fusion (k=60)
+    k = 60
+    rrf_scores = {}
+    for rank, r in enumerate(vector_results):
+        rrf_scores[r["id"]] = rrf_scores.get(r["id"], 0) + 1.0 / (k + rank + 1)
+        if r["id"] not in rrf_scores:
+            rrf_scores[r["id"]] = 0
+    for rank, r in enumerate(keyword_results):
+        rrf_scores[r["id"]] = rrf_scores.get(r["id"], 0) + 1.0 / (k + rank + 1)
+
+    # Merge: use vector results as base (they have embeddings), add keyword-only hits
+    all_results = {r["id"]: r for r in vector_results}
+    for r in keyword_results:
+        if r["id"] not in all_results:
+            all_results[r["id"]] = r
+
+    # Sort by RRF score, normalize to 0-1 range
+    merged = list(all_results.values())
+    max_rrf = max(rrf_scores.values()) if rrf_scores else 1
+    for r in merged:
+        r["score"] = rrf_scores.get(r["id"], 0) / max_rrf
+
+    merged.sort(key=lambda x: x["score"], reverse=True)
+    merged = merged[:top_k]
 
     if min_score > 0:
-        results = [r for r in results if r["score"] >= min_score]
+        merged = [r for r in merged if r["score"] >= min_score]
+
+    return merged
+
+
+def _search_vectors(question, namespace, top_k, source_filter, min_score=0.0, query_embedding=None):
+    """Shared search logic with hybrid search. Returns (results, source_list, context, chunk_details)."""
+    # Use hybrid search if keyword index exists for this namespace
+    if namespace in _keyword_index and _keyword_index[namespace]:
+        results = _hybrid_search(question, namespace, top_k, source_filter, min_score, query_embedding)
+    else:
+        # Fallback to vector-only
+        if query_embedding is None:
+            query_embedding = embedder.embed_query(question)
+            usage["gemini"]["texts_embedded"] += 1
+            usage["gemini"]["requests"] += 1
+
+        idx = vectorstore.get_index()
+        filter_dict = {"source": {"$in": source_filter}} if source_filter else None
+        raw = idx.query(
+            vector=query_embedding,
+            top_k=top_k,
+            include_metadata=True,
+            namespace=namespace,
+            filter=filter_dict,
+        )
+        usage["pinecone"]["queries"] += 1
+        results = [{"id": m.id, "score": m.score, "metadata": m.metadata} for m in raw.matches]
+
+        if min_score > 0:
+            results = [r for r in results if r["score"] >= min_score]
 
     if not results:
         return [], [], "", []
@@ -684,8 +796,7 @@ def api_ingest():
                     vectors.append({"id": chunk_item["id"], "values": emb, "metadata": metadata})
 
             if vectors:
-                vectorstore.upsert_vectors(vectors, namespace=namespace)
-                usage["pinecone"]["upserts"] += 1
+                _upsert_and_index(vectors, namespace)
                 total_chunks += len(vectors)
 
             summary_text = ""
@@ -765,8 +876,7 @@ def _reingest_url(url, namespace, summarize=True):
             vectors.append({"id": chunk_item["id"], "values": emb, "metadata": metadata})
 
     if vectors:
-        vectorstore.upsert_vectors(vectors, namespace=namespace)
-        usage["pinecone"]["upserts"] += 1
+        _upsert_and_index(vectors, namespace)
 
     summary_text = ""
     if summarize:
@@ -906,8 +1016,7 @@ def api_ingest_cloud():
             vectors.append({"id": chunk_item["id"], "values": emb, "metadata": metadata})
 
     if vectors:
-        vectorstore.upsert_vectors(vectors, namespace=namespace)
-        usage["pinecone"]["upserts"] += 1
+        _upsert_and_index(vectors, namespace)
 
     summary_text = ""
     if summarize:
@@ -1074,8 +1183,7 @@ def api_ingest_text():
         })
 
     for i in range(0, len(vectors), 100):
-        vectorstore.upsert_vectors(vectors[i:i+100], namespace=namespace)
-        usage["pinecone"]["upserts"] += 1
+        _upsert_and_index(vectors[i:i+100], namespace)
 
     summary = ""
     if summarize:
@@ -1149,8 +1257,7 @@ def api_ingest_audio():
             })
 
         for i in range(0, len(vectors), 100):
-            vectorstore.upsert_vectors(vectors[i:i+100], namespace=namespace)
-            usage["pinecone"]["upserts"] += 1
+            _upsert_and_index(vectors[i:i+100], namespace)
 
         summary = ""
         if summarize:
@@ -1232,8 +1339,7 @@ def api_ingest_folder():
                 vectors.append({"id": chunk_item["id"], "values": emb, "metadata": metadata})
 
         if vectors:
-            vectorstore.upsert_vectors(vectors, namespace=namespace)
-            usage["pinecone"]["upserts"] += 1
+            _upsert_and_index(vectors, namespace)
             total_chunks += len(vectors)
 
         summary_text = ""
@@ -1304,8 +1410,7 @@ def _watch_folder(watcher_id: str, folder_path: str, namespace: str, stop_event:
                             vectors.append({"id": chunk_item["id"], "values": emb, "metadata": metadata})
 
                     if vectors:
-                        vectorstore.upsert_vectors(vectors, namespace=namespace)
-                        usage["pinecone"]["upserts"] += 1
+                        _upsert_and_index(vectors, namespace)
 
                     try:
                         file_type = Path(filepath).suffix.lstrip(".")
@@ -1490,6 +1595,32 @@ def api_update_tags(name):
         json.dump(all_sums, f, indent=2)
 
     return jsonify({"name": name, "tags": tags})
+
+
+@app.route("/api/suggested-questions")
+def api_suggested_questions():
+    """Generate smart suggested questions based on document summaries."""
+    namespace = request.args.get("namespace", "default")
+    all_sums = summaries.load_summaries(namespace)
+    if not all_sums or len(all_sums) < 1:
+        return jsonify({"questions": []})
+
+    summary_text = "\n".join(f"- {f}: {info.get('summary', '')[:100]}" for f, info in list(all_sums.items())[:15])
+    try:
+        client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
+        msg = client.messages.create(
+            model=config.CLAUDE_MODEL, max_tokens=150,
+            system="Generate exactly 4 short questions (max 10 words each) that would be most useful to ask about these documents. Questions should surface insights, gaps, connections, or key takeaways. Return ONLY the 4 questions, one per line, no numbering.",
+            messages=[{"role": "user", "content": f"Documents in knowledge base:\n{summary_text}"}],
+        )
+        usage["claude"]["requests"] += 1
+        if msg.usage:
+            usage["claude"]["input_tokens"] += msg.usage.input_tokens
+            usage["claude"]["output_tokens"] += msg.usage.output_tokens
+        lines = [l.strip() for l in msg.content[0].text.strip().split("\n") if l.strip()]
+        return jsonify({"questions": lines[:4]})
+    except Exception:
+        return jsonify({"questions": []})
 
 
 @app.route("/api/tags")

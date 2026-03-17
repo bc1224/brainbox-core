@@ -2482,12 +2482,21 @@ function updateWelcomePrompts(){
     el.innerHTML='<button class="welcome-prompt" style="border-color:rgba(244,114,182,0.15);color:rgba(244,114,182,0.5)" onclick="openAddSource()">+ Add your first document</button>';
   }else{
     if(sub)sub.innerHTML='You have <strong>'+allSourceData.length+'</strong> documents loaded. Ask anything, or click <strong>Synthesize</strong> to analyze across all sources.';
-    el.innerHTML=[
-      'Summarize everything in this knowledge base',
-      'What are the most important takeaways?',
-      'What gaps or contradictions exist?'
-    ].map(q=>`<button class="welcome-prompt" onclick="setInput('${q}');sendQuestion()">${q}</button>`).join('');
+    // Show generic prompts immediately, then replace with smart ones
+    el.innerHTML=['Summarize everything','What are the key takeaways?','What gaps exist?'].map(q=>`<button class="welcome-prompt" onclick="setInput('${q}');sendQuestion()">${q}</button>`).join('');
+    // Fetch AI-generated smart suggestions
+    fetchSmartSuggestions(el);
   }
+}
+
+async function fetchSmartSuggestions(el){
+  try{
+    const res=await fetch(`/api/suggested-questions?namespace=${encodeURIComponent(ns())}`);
+    const data=await res.json();
+    if(data.questions&&data.questions.length&&el&&document.contains(el)){
+      el.innerHTML=data.questions.map(q=>`<button class="welcome-prompt" onclick="setInput('${esc(q).replace(/'/g,"\\'")}');sendQuestion()">${esc(q)}</button>`).join('');
+    }
+  }catch(e){}
 }
 
 refreshSidebar().then(()=>{updateWelcomePrompts();loadCustomPrompt();renderPinned();renderReadingList();restoreChatFromStorage()});

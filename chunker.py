@@ -66,7 +66,7 @@ def chunk_text(text: str, chunk_size: int = 500, overlap: int = 50) -> list[str]
 
 
 def extract_pdf(filepath: str) -> str:
-    """Extract text from PDF."""
+    """Extract text from PDF, including AI descriptions of images/charts."""
     try:
         from PyPDF2 import PdfReader
         reader = PdfReader(filepath)
@@ -75,9 +75,41 @@ def extract_pdf(filepath: str) -> str:
             page_text = page.extract_text()
             if page_text:
                 text += page_text + "\n\n"
+
+        # Try to extract and describe images using Gemini vision
+        image_descriptions = _describe_pdf_images(filepath)
+        if image_descriptions:
+            text += "\n\n--- Visual Content ---\n\n" + image_descriptions
+
         return text.strip()
     except Exception as e:
         console.print(f"  [red]Error reading PDF {filepath}: {e}[/red]")
+        return ""
+
+
+def _describe_pdf_images(filepath: str) -> str:
+    """Use Gemini to describe images/charts in a PDF."""
+    try:
+        import config
+        from google import genai
+
+        gclient = genai.Client(api_key=config.GOOGLE_API_KEY)
+        uploaded = gclient.files.upload(file=filepath)
+        response = gclient.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=[
+                "Describe all charts, diagrams, images, and visual elements in this PDF. "
+                "For each visual: describe what it shows, key data points, labels, and trends. "
+                "If there are no visuals, respond with just 'No visual content found.' "
+                "Be concise but specific.",
+                uploaded,
+            ],
+        )
+        result = response.text or ""
+        if "no visual content" in result.lower():
+            return ""
+        return result
+    except Exception:
         return ""
 
 
