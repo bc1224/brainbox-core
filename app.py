@@ -494,8 +494,8 @@ def _generate_followups(question: str, answer: str) -> list[str]:
         msg = client.messages.create(
             model=config.CLAUDE_MODEL,
             max_tokens=150,
-            system="Generate exactly 3 short follow-up questions (max 8 words each) that a user would find useful after reading this Q&A. Questions should dig deeper, explore related angles, or surface things the user hasn't considered. Return ONLY the 3 questions, one per line, no numbering or bullets.",
-            messages=[{"role": "user", "content": f"Q: {question[:200]}\n\nA: {answer[:500]}"}],
+            system="Generate exactly 3 short follow-up questions (max 8 words each) that can be ANSWERED by the documents in this knowledge base. Questions must be about the CONTENT of the answer — dig deeper into specifics mentioned, explore related topics from the source material, or ask for comparisons/details. NEVER ask meta questions about the tool, the system, or its capabilities. Return ONLY the 3 questions, one per line, no numbering or bullets.",
+            messages=[{"role": "user", "content": f"User asked: {question[:200]}\n\nAnswer (from their documents):\n{answer[:600]}"}],
         )
         lines = [l.strip() for l in msg.content[0].text.strip().split("\n") if l.strip()]
         usage["claude"]["requests"] += 1
