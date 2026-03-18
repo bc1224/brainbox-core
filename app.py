@@ -407,8 +407,10 @@ def api_query():
                 msg = "No strong matches found for that question. Try rephrasing, or check that you're in the right knowledge base."
             return jsonify({"answer": msg, "sources": []})
 
-    # Resolve model tier
-    if model_tier == "auto":
+    # Resolve model tier — follow-ups need conversation context, so use at least balanced
+    if is_followup and model_tier in ("auto", "fast"):
+        model_tier = "balanced"
+    elif model_tier == "auto":
         model_tier = _auto_select_model(question)
     profile = MODEL_PROFILES.get(model_tier, MODEL_PROFILES["balanced"])
 
@@ -441,8 +443,13 @@ def api_query():
             if profile["provider"] == "gemini":
                 # Use Gemini Flash for fast tier
                 gclient = genai.Client(api_key=config.GOOGLE_API_KEY)
-                # Build simple prompt for Gemini
-                gemini_msgs = sys_prompt + "\n\n" + user_content
+                # Build prompt with conversation history for Gemini
+                history_text = ""
+                if len(memory) > 1:
+                    for m in memory[:-1]:  # all except current
+                        role = "User" if m["role"] == "user" else "Assistant"
+                        history_text += f"\n{role}: {m['content'][:500]}\n"
+                gemini_msgs = sys_prompt + "\n\n" + (f"Conversation so far:\n{history_text}\n\n---\n\n" if history_text else "") + user_content
                 response = gclient.models.generate_content(
                     model=profile["model"],
                     contents=gemini_msgs,
