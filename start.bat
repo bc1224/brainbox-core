@@ -1,5 +1,6 @@
 @echo off
 title BrainBox
+cd /d "%~dp0"
 echo.
 echo   Starting BrainBox...
 echo.
@@ -22,6 +23,7 @@ if not exist ".deps_installed" (
     echo.
 )
 
-:: Start the app
+:: Open browser after a short delay, then start the server
+start "" cmd /c "timeout /t 3 /nobreak >nul && start http://localhost:5000"
 python app.py
 pause
