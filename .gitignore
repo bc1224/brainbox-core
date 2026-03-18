@@ -13,6 +13,9 @@ build/
 venv/
 env/
 
+# Startup marker
+.deps_installed
+
 # BrainBox data (user-specific)
 .summaries/
 data/

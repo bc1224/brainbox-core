@@ -32,22 +32,17 @@ You need three free/cheap API keys:
 ### 2. Install & Run
 
 ```bash
-# Clone the repo
-git clone https://github.com/YOUR_USERNAME/brainbox.git
-cd brainbox
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Set up your keys
-cp .env.example .env
-# Edit .env and paste your three API keys
-
-# Run
-python app.py
+git clone https://github.com/bc1224/brainbox-core.git
+cd brainbox-core
 ```
 
-Open **http://localhost:5000** in your browser.
+**Windows:** Double-click `start.bat`
+
+**Mac/Linux:** Run `./start.sh`
+
+**Manual:** `pip install -r requirements.txt && python app.py`
+
+On first run, a setup wizard walks you through pasting your 3 API keys. Then open **http://localhost:5000**.
 
 ### 3. Add Documents
 
