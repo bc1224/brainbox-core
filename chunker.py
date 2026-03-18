@@ -217,13 +217,46 @@ def process_file(filepath: str, chunk_size: int, chunk_overlap: int) -> Generato
         }
 
 
-def discover_files(directory: str) -> list[str]:
-    """Recursively find all supported files in a directory."""
+DEFAULT_IGNORE_DIRS = {
+    "node_modules", "__pycache__", ".git", ".venv", "venv", "env",
+    "dist", "build", ".next", ".nuxt", ".output", ".summaries",
+}
+
+DEFAULT_IGNORE_FILES = {
+    ".env", ".env.local", ".env.example", ".gitignore", ".dockerignore",
+    "package-lock.json", "yarn.lock", "pnpm-lock.yaml",
+}
+
+
+def discover_files(directory: str, ignore_patterns: list[str] = None) -> list[str]:
+    """Recursively find all supported files in a directory.
+
+    ignore_patterns: list of filenames or dir names to skip.
+    Dirs should end with / (e.g. 'node_modules/').
+    Files are matched case-insensitively.
+    """
+    extra_ignore_dirs = set()
+    extra_ignore_files = set()
+    if ignore_patterns:
+        for p in ignore_patterns:
+            p = p.strip()
+            if not p:
+                continue
+            if p.endswith("/") or p.endswith("\\"):
+                extra_ignore_dirs.add(p.rstrip("/\\"))
+            else:
+                extra_ignore_files.add(p.lower())
+
+    skip_dirs = DEFAULT_IGNORE_DIRS | extra_ignore_dirs
+    skip_files = DEFAULT_IGNORE_FILES | extra_ignore_files
+
     files = []
     for root, dirs, filenames in os.walk(directory):
-        # Skip hidden directories
-        dirs[:] = [d for d in dirs if not d.startswith(".")]
+        # Skip hidden and ignored directories
+        dirs[:] = [d for d in dirs if not d.startswith(".") and d not in skip_dirs]
         for fname in filenames:
+            if fname.lower() in skip_files:
+                continue
             if Path(fname).suffix.lower() in SUPPORTED_EXTENSIONS:
                 files.append(os.path.join(root, fname))
     return sorted(files)

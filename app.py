@@ -1085,6 +1085,12 @@ def api_delete_source(name):
         with open(summaries._namespace_path(namespace), "w") as f:
             json.dump(all_sums, f, indent=2)
 
+    # Also clear from keyword index
+    if namespace in _keyword_index:
+        to_remove = [cid for cid, (text, meta) in _keyword_index[namespace].items() if meta.get("source") == name]
+        for cid in to_remove:
+            del _keyword_index[namespace][cid]
+
     return jsonify({"deleted": name, "vectors_removed": len(ids_to_delete)})
 
 
@@ -1305,6 +1311,7 @@ def api_ingest_folder():
     namespace = data.get("namespace", "default")
     summarize = data.get("summarize", True)
     force = data.get("force", False)
+    ignore_patterns = data.get("ignore", [])
 
     if not folder_path:
         return jsonify({"error": "No folder path provided"}), 400
@@ -1318,7 +1325,7 @@ def api_ingest_folder():
     if p.is_file():
         files = [str(p)]
     elif p.is_dir():
-        files = chunker.discover_files(str(p))
+        files = chunker.discover_files(str(p), ignore_patterns=ignore_patterns)
     else:
         return jsonify({"error": f"Invalid path: {folder_path}"}), 400
 

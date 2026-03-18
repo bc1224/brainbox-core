@@ -1156,12 +1156,13 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
             <button class="add-secondary-btn" onclick="document.getElementById('folder-picker').click()" style="flex:none;padding:10px 14px">Browse</button>
             <input type="file" id="folder-picker" webkitdirectory style="display:none">
           </div>
+          <input class="add-input" type="text" id="folder-ignore" placeholder="Ignore: node_modules/, .env, test.py (comma separated)" style="font-size:12px">
           <div class="add-row">
             <button class="add-pink-btn" onclick="ingestFolder()">Ingest Folder</button>
             <button class="add-secondary-btn" id="watch-btn" onclick="toggleWatch()" title="Monitor this folder and auto-ingest new or changed files every 10 seconds">Watch Folder</button>
           </div>
           <p class="add-hint"><span id="watch-status"></span></p>
-          <p class="add-hint" style="color:rgba(255,255,255,0.4)">Watch monitors the folder every 10s and auto-imports new or changed files.</p>
+          <p class="add-hint" style="color:rgba(255,255,255,0.45)">Auto-skips: node_modules, .git, __pycache__, .env, lock files. Add more above.</p>
         </div>
       </div>
     </div>
@@ -1679,7 +1680,9 @@ async function ingestFolder(){
   busy=true;toast(`Ingesting folder into "${ns()}"...`,'info');
 
   try{
-    const res=await fetch('/api/ingest-folder',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:folderPath,namespace:ns(),summarize:autoSummarize,force:document.getElementById('force-ingest').checked})});
+    const ignoreRaw=document.getElementById('folder-ignore')?.value||'';
+    const ignorePatterns=ignoreRaw?ignoreRaw.split(',').map(s=>s.trim()).filter(Boolean):[];
+    const res=await fetch('/api/ingest-folder',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:folderPath,namespace:ns(),summarize:autoSummarize,force:document.getElementById('force-ingest').checked,ignore:ignorePatterns})});
     const data=await res.json();
     if(data.error)toast(data.error,'error');
     else{
