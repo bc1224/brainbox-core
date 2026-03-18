@@ -383,17 +383,29 @@ def api_query():
     if not question:
         return jsonify({"error": "No question provided"}), 400
 
-    results, source_list, context, chunk_details = _search_vectors(question, namespace, top_k, source_filter, min_score)
+    # Detect follow-up/reference questions that refer to the conversation, not documents
+    follow_up_patterns = {"summarize that", "summarize your", "summarize the last", "what did you", "say that again",
+                          "explain that", "elaborate on that", "more detail on that", "rephrase that", "what do you mean",
+                          "tell me more", "can you clarify", "go deeper", "expand on"}
+    is_followup = any(p in question.lower() for p in follow_up_patterns)
 
-    if not results:
-        all_sums = summaries.load_summaries(namespace)
-        if not all_sums:
-            msg = "No documents in this knowledge base yet. Add some files or URLs using the **Add Sources** button in the sidebar, then try again."
-        elif min_score > 0:
-            msg = f"No documents matched above your relevance threshold ({min_score:.0%}). Try lowering the **Min relevance** in Settings, or rephrase your question."
-        else:
-            msg = "No strong matches found for that question. Try rephrasing, or check that you're in the right knowledge base."
-        return jsonify({"answer": msg, "sources": []})
+    memory = _get_memory(session_id)
+
+    if is_followup and memory:
+        # Skip search — use conversation context only
+        results, source_list, context, chunk_details = [], [], "", []
+    else:
+        results, source_list, context, chunk_details = _search_vectors(question, namespace, top_k, source_filter, min_score)
+
+        if not results:
+            all_sums = summaries.load_summaries(namespace)
+            if not all_sums:
+                msg = "No documents in this knowledge base yet. Add some files or URLs using the **Add Sources** button in the sidebar, then try again."
+            elif min_score > 0:
+                msg = f"No documents matched above your relevance threshold ({min_score:.0%}). Try lowering the **Min relevance** in Settings, or rephrase your question."
+            else:
+                msg = "No strong matches found for that question. Try rephrasing, or check that you're in the right knowledge base."
+            return jsonify({"answer": msg, "sources": []})
 
     # Resolve model tier
     if model_tier == "auto":
@@ -414,8 +426,10 @@ def api_query():
         }
         sys_prompt += format_instructions.get(format_mode, "")
 
-    memory = _get_memory(session_id)
-    user_content = f"Context from knowledge base:\n\n{context}\n\n---\n\nQuestion: {question}"
+    if context:
+        user_content = f"Context from knowledge base:\n\n{context}\n\n---\n\nQuestion: {question}"
+    else:
+        user_content = question
     memory.append({"role": "user", "content": user_content})
 
     def generate():
